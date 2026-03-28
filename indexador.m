@@ -1,63 +1,63 @@
 % =========================================================================
-% SCRIPT DE INDEXACIÓN: GENERADOR DE HUELLAS DIGITALES (FINGERPRINTING)
+% SCRIPT DE INDEXACIÓN: GENERACIÓN DE LA BASE DE DATOS DE HUELLAS (FINGERPRINTS)
 % =========================================================================
-% Este script recorre una carpeta de audio, extrae picos de energía de cada
-% canción y los guarda en una base de datos mapeada por "Hashes".
+% Este script automatiza el procesamiento de una biblioteca musical para 
+% extraer sus rasgos acústicos únicos (Landmarks) y almacenarlos en una 
+% estructura de datos de búsqueda ultra-rápida (Tabla Hash).
 
-% --- 1. Configuración Inicial ---
 clear; clc;
-folderPath = fullfile('Songs', 'Songs');  % Ruta de la carpeta con los MP3
-songFiles = dir(fullfile(folderPath, '*.mp3'));  % Lista de archivos encontrados
+folderPath = fullfile('Songs', 'Songs');  % Ruta del repositorio de audio
+songFiles = dir(fullfile(folderPath, '*.mp3'));
 
-if isempty(songFiles)
-    error('No se encontraron archivos .mp3.');
-end
+if isempty(songFiles), error('No se detectaron archivos .mp3 en la ruta.'); end
 
-% Creamos un Mapa (Diccionario) para la base de datos:
-% Key: Hash (número único del sonido) | Value: [ID Canción; Tiempo en el que ocurre]
+% 1. ESTRUCTURAS DE ALMACENAMIENTO
+% Usamos un Mapa (containers.Map) por su eficiencia O(1) en acceso aleatorio.
+% Clave: Hash de sonido (32 bits) | Valor: [ID_Cancion; Tiempo_Original]
 database = containers.Map('KeyType', 'double', 'ValueType', 'any'); 
 
-% Guardamos los nombres de los archivos para recuperarlos luego
+% Vector de metadatos para mapear el ID numérico con el nombre real del archivo
 nombres_canciones = {songFiles.name}; 
 
-fprintf('Iniciando indexación de %d canciones...\n', length(songFiles));
+fprintf('Iniciando indexación masiva de %d canciones...\n', length(songFiles));
 
-% --- 2. Bucle Principal ---
+% --- BUCLE DE PROCESAMIENTO POR CANCIÓN ---
 for id_cancion = 1:length(songFiles)
     fileName = fullfile(folderPath, songFiles(id_cancion).name);
     [y, fs] = audioread(fileName);
-    [S, ~, ~] = calcular_espectrograma(y, fs);
-
-    % Detección de picos: Buscamos los puntos con más energía (Landmarks)
-    % El umbral es dinámico: depende de la media y desviación estándar de la canción
-    threshold = mean(S(:)) + 1.5 * std(S(:)); 
-    [freqs, times] = find_peaks_local(S, threshold);
-
-    % --- 3. Generación de Hashes (Parejas de picos) ---
-    % Para que la huella sea única, no guardamos un pico solo, sino la
-    % relación entre un pico y sus "vecinos" en el tiempo (Fan-out).
+    
+    % 2. ANÁLISIS ESPECTRAL (Compañero 1)
+    % Se genera el espectrograma optimizado con ventana de 40ms y límite de 5kHz.
+    [S, F, T] = calcular_espectrograma(y, fs);
+  
+    % 3. EXTRACCIÓN DE LANDMARKS (Compañero 2)
+    % Se utiliza morfología matemática (imregionalmax) sobre la densidad espectral
+    % para identificar picos de energía que sobrevivan a distorsiones y ruidos.
+    picos_mask = imregionalmax(S);
+    [idx_f, idx_t] = find(picos_mask);
+    
+    % 4. CODIFICACIÓN DE HUELLAS POR PAREJAS (Hashing - Compañero 3)
+    % No indexamos picos sueltos, sino relaciones entre picos (Fan-out = 3).
+    % Esto aumenta la unicidad de la huella digital exponencialmente.
     fan_out = 3;
-    for i = 1:length(freqs) - fan_out
+    for i = 1:length(idx_t) - fan_out
         for j = 1:fan_out
-            idx_next = i + j; % Indice del pico vecino
-
-            % Calculamos la diferencia de tiempo entre los dos picos
-            dt = times(idx_next) - times(i);
-
-             % Ventana de coherencia: Solo emparejamos si están cerca (máx 64 frames)
+            idx_next = i + j;
+            dt = idx_t(idx_next) - idx_t(i); % Diferencia temporal entre picos
+            
+            % Restricción de coherencia: los picos deben estar en una ventana cercana
             if dt > 0 && dt < 64
-
-                % EMPAQUETADO DE BITS (HASHING):
-                % Creamos un número de 32 bits que contiene:
-                % Frecuencia 1 (10 bits), Frecuencia 2 (10 bits), Tiempo dt (12 bits)
-                % Se usa aritmética simple para desplazar los bits:
-                hash_key = double(uint32(freqs(i)-1)*2^18 + uint32(freqs(idx_next)-1)*2^8 + uint32(dt));
-
-                % Datos a guardar: [ID de la canción; Tiempo exacto del primer pico]
-                new_entry = [uint32(id_cancion); uint32(times(i))];
-
-                % Si el sonido (hash) ya existe en el mapa, añadimos la nueva ubicación
-                % Si no existe, creamos la entrada en el mapa
+                % GENERACIÓN DEL HASH (Clave de búsqueda de 32 bits):
+                % Empaquetado: [Frecuencia_1 (10 bits) | Frecuencia_2 (10 bits) | dt (12 bits)]
+                % Se usa aritmética de bits para desplazar valores y evitar colisiones.
+                f1 = idx_f(i); 
+                f2 = idx_f(idx_next);
+                hash_key = double(uint32(f1-1)*2^18 + uint32(f2-1)*2^8 + uint32(dt));
+                
+                % Metadato asociado: [ID de canción ; Momento en el que ocurre (frames)]
+                new_entry = [uint32(id_cancion); uint32(idx_t(i))];
+                
+                % Almacenamiento en el Mapa (Manejo de colisiones: se añaden nuevas ubicaciones)
                 if isKey(database, hash_key)
                     database(hash_key) = [database(hash_key), new_entry];
                 else
@@ -69,14 +69,7 @@ for id_cancion = 1:length(songFiles)
     fprintf('Procesada [%d/%d]: %s\n', id_cancion, length(songFiles), songFiles(id_cancion).name);
 end
 
-% Guardamos la base de datos y la lista de nombres en un archivo .mat
+% 5. PERSISTENCIA DE DATOS
+% Se utiliza la versión -v7.3 para soportar archivos de gran tamaño (HDF5)
 save('shazam_db.mat', 'database', 'nombres_canciones', '-v7.3');
-disp('Base de datos con NOMBRES guardada con éxito.');
-
-
-
-
-
-
-
-
+disp('Base de datos generada y persistida con éxito.');
