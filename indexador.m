@@ -31,9 +31,14 @@ for id_cancion = 1:length(songFiles)
     [S, F, T] = calcular_espectrograma(y, fs);
   
     % 3. EXTRACCIÓN DE LANDMARKS (Compañero 2)
-    % Se utiliza morfología matemática (imregionalmax) sobre la densidad espectral
-    % para identificar picos de energía que sobrevivan a distorsiones y ruidos.
-    picos_mask = imregionalmax(S);
+    % Calculamos un umbral dinámico basado en la energía de la canción
+    umbral = mean(S(:)) + 1.5 * std(S(:)); 
+    
+    % Aplicamos imregionalmax PERO solo en puntos que superen el umbral
+    % Esto elimina el "mar de puntos rojos" en zonas de silencio
+    picos_mask = imregionalmax(S) & (S > umbral); 
+    
+    % Ahora extraemos los índices de los picos que SI son importantes
     [idx_f, idx_t] = find(picos_mask);
     
     % 4. CODIFICACIÓN DE HUELLAS POR PAREJAS (Hashing - Compañero 3)
@@ -72,4 +77,4 @@ end
 % 5. PERSISTENCIA DE DATOS
 % Se utiliza la versión -v7.3 para soportar archivos de gran tamaño (HDF5)
 save('shazam_db.mat', 'database', 'nombres_canciones', '-v7.3');
-disp('Base de datos generada y persistida con éxito.');
+disp('Base de datos generada y con éxito.');
