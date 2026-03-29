@@ -40,11 +40,16 @@ y_query = function_add_noise(y_query);
 tic; 
 
 % 3. GENERACIÓN DE ESPECTROGRAMA Y LANDMARKS (Puntos Clave)
-% Se utiliza la configuración optimizada (40ms, 75% overlap, 5000Hz)
 [S, F, T] = calcular_espectrograma(y_query, fs);
 
-% Detección de máximos locales mediante morfología matemática (imregionalmax)
-picos_mask = imregionalmax(S);
+% Calculamos un umbral dinámico basado en la energía de la canción
+umbral = mean(S(:)) + 1.5 * std(S(:)); 
+    
+% Aplicamos imregionalmax PERO solo en puntos que superen el umbral
+% Esto elimina el "mar de puntos rojos" en zonas de silencio
+picos_mask = imregionalmax(S) & (S > umbral); 
+    
+% Ahora extraemos los índices de los picos que SI son importantes
 [idx_f, idx_t] = find(picos_mask);
 
 % 4. GENERACIÓN DE HASHES Y BÚSQUEDA EN BASE DE DATOS
