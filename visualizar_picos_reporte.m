@@ -1,23 +1,20 @@
 function visualizar_picos_reporte(audio, fs)
-    % 1. Configuración idéntica a la función del compañero
-    nfft = 1024;
-    window = 1024;
-    overlap = 512;
-
-    % 2. Calcular espectrograma para la imagen
-    [S, F, T] = spectrogram(audio, window, overlap, nfft, fs);
-    S_mag = abs(S);
-    S_db = 10 * log10(S_mag + eps); % Escala logarítmica para ver mejor
-
-    % 3. Detectar picos 
-    picos_mask = imregionalmax(S_mag);
+    % 1. Obtener espectrograma con los parámetros oficiales (Compañero 1)
+    [S, F, T] = calcular_espectrograma(audio, fs);
+    
+    % 2. Detección de picos con FILTRO DE ENERGÍA (Compañero 2 + Optimización)
+    % Usamos el mismo umbral dinámico que en el indexador para coherencia
+    umbral = mean(S(:)) + 1.5 * std(S(:)); 
+    
+    % Solo marcamos como picos los máximos regionales que superan el umbral
+    picos_mask = imregionalmax(S) & (S > umbral);
     [idx_f, idx_t] = find(picos_mask);
 
-    % 4. Creación la figura
-    figure('Color', 'w', 'Name', 'Captura para el Reporte');
+    % 3. Crear la figura para el entregable
+    figure('Color', 'w', 'Name', 'Captura Oficial para el Reporte');
     
-    % Dibujar el espectrograma (fondo)
-    imagesc(T, F, S_db);
+    % Dibujamos el espectrograma de fondo
+    imagesc(T, F, S); 
     axis xy; % Orientación correcta de frecuencias
     colormap('jet');
     colorbar;
@@ -25,25 +22,26 @@ function visualizar_picos_reporte(audio, fs)
     
     hold on;
 
-    % Dibujar los picos (puntos rojos)
-    % Usamos los vectores T y F para posicionar los puntos correctamente
-    plot(T(idx_t), F(idx_f), 'ro', 'MarkerSize', 3, 'LineWidth', 1);
+    % Dibujamos los picos (puntos rojos)
+    % T(idx_t) y F(idx_f) sitúan los puntos exactamente sobre los píxeles correctos
+    plot(T(idx_t), F(idx_f), 'ro', 'MarkerSize', 4, 'LineWidth', 1.2);
 
-    % 5. Formato y Limpieza
-    title('Análisis de Landmarks: Espectrograma con Picos de Energía');
+    % 4. Formato y Presentación
+    title('Huella Acústica: Landmarks sobre Espectrograma (Optimizado)');
     xlabel('Tiempo (segundos)');
     ylabel('Frecuencia (Hz)');
     
-    % Hacemos un zoom a la zona de interés (0-5000Hz) para que se vea profesional
-    ylim([0 5000]); 
+    % Zoom automático a la zona de interés (puedes ajustar el límite)
+    % Si fs/2 es muy alto, podrías limitarlo a 8000 o 10000 para que se vea mejor
+    ylim([0 max(F)]); 
     
-    % Opcional: Zoom temporal si el audio es muy largo (ej: primeros 3 seg)
-    if max(T) > 3
-        xlim([0 3]);
+    % Zoom temporal para que los puntos no se amontonen (primeros 2 segundos)
+    if max(T) > 2
+        xlim([0 2]);
     end
     
     grid on;
     hold off;
     
-    fprintf('Gráfico generado.\n');
+    fprintf('Captura generada correctamente.\n');
 end
