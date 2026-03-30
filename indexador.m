@@ -6,7 +6,7 @@
 % estructura de datos de búsqueda ultra-rápida (Tabla Hash).
 
 clear; clc;
-folderPath = fullfile('Songs', 'Songs');  % Ruta del repositorio de audio
+folderPath = fullfile('Songs');  % Ruta del repositorio de audio
 songFiles = dir(fullfile(folderPath, '*.mp3'));
 
 if isempty(songFiles), error('No se detectaron archivos .mp3 en la ruta.'); end
